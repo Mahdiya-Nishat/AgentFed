@@ -1,0 +1,56 @@
+import torch
+import copy
+
+class EdgeServer:
+    def __init__(self, global_model, mu=0.01):
+        """
+        Initializes the Edge Server for FedProx aggregation.
+        
+        Args:
+            global_model: The initial SLM Reasoning Module weights.
+            mu: The proximal term coefficient for FedProx.
+        """
+        self.global_model = global_model
+        self.mu = mu # Parameter to handle heterogeneity in FedProx
+
+    def aggregate(self, local_weights):
+        """
+        Performs FedAvg/FedProx aggregation on local model updates.
+        """
+        global_dict = self.global_model.state_dict()
+        for key in global_dict.keys():
+            # Average the weights from all N agents
+            global_dict[key] = torch.stack([local_weights[i][key] for i in range(len(local_weights))], 0).mean(0)
+        
+        self.global_model.load_state_dict(global_dict)
+        return self.global_model.state_dict()
+
+class FederatedLearningWorkflow:
+    def __init__(self, num_agents, global_model):
+        self.server = EdgeServer(global_model)
+        self.agents_models = [copy.deepcopy(global_model) for _ in range(num_agents)]
+
+    def local_update_step(self, agent_idx, local_data, proximal_term=True):
+        """
+        Simulates local training. In FedProx, a proximal term is added to the 
+        loss to limit the impact of local drift.
+        """
+        # Training logic would go here, updating self.agents_models[agent_idx]
+        pass
+
+    def run_fl_round(self):
+        # 1. Collect weights from all worker SLM agents [cite: 185]
+        local_weights = [agent.state_dict() for agent in self.agents_models]
+        
+        # 2. Aggregate at Edge Server [cite: 201, 225]
+        new_global_weights = self.server.aggregate(local_weights)
+        
+        # 3. Broadcast updated global parameters back to workers [cite: 129, 186]
+        for agent in self.agents_models:
+            agent.load_state_dict(new_global_weights)
+        
+        print("FL Round Complete: Global model updated and broadcasted to SLM agents.")
+
+# Initialize FL Layer for 10 agents
+# reasoning_module is the SLM model defined in Step 2
+fl_system = FederatedLearningWorkflow(num_agents=10, global_model=encoder)
