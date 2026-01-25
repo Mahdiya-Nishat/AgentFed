@@ -93,3 +93,83 @@ mean, std = scalability_latency_experiment(
     measured_cycles=30    
 )
 results["TinyBERT-4L"] = (mean, std)
+
+
+
+#Plotting in MATLAB
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+
+
+mpl.rcParams.update({
+    "font.family": "serif",
+    "font.size": 15,
+    "axes.labelsize": 15,
+    "axes.titlesize": 15,
+    "legend.fontsize": 13,
+    "xtick.labelsize": 15,
+    "ytick.labelsize": 15,
+    "lines.linewidth": 2.2,
+})
+
+
+
+COLORS = {
+    "DistilBERT": "#1f77b4",   # blue
+    "MiniLM-L6": "#ff7f0e",    # orange
+    "ALBERT-base": "#2ca02c",  # green
+    "TinyBERT-4L": "#d62728",  # red
+}
+
+MARKERS = {
+    "DistilBERT": "o",
+    "MiniLM-L6": "s",
+    "ALBERT-base": "^",
+    "TinyBERT-4L": "D",
+}
+
+#Plot
+fig, ax = plt.subplots(figsize=(7.5, 5.2), dpi=100)
+
+for name, (mean, std) in results.items():
+    ax.errorbar(
+        agent_counts,
+        mean,
+        yerr=std,
+        label=name,
+        color=COLORS[name],
+        marker=MARKERS[name],
+        markersize=5,
+        markerfacecolor="white",
+        markeredgewidth=1.2,
+        capsize=3,
+        elinewidth=1.2,
+        alpha=0.9
+    )
+
+
+# O(N) reference line (subtle)
+
+N0 = agent_counts[0]
+lat0 = results["DistilBERT"][0][0]
+linear_ref = [(lat0 / N0) * N for N in agent_counts]
+
+ax.plot(
+    agent_counts,
+    linear_ref,
+    linestyle="--",
+    color="gray",
+    linewidth=1.5,
+    alpha=0.7,
+    label=r"$O(N)$ reference"
+)
+
+ax.set_xlabel("Number of Agents (N)")
+ax.set_ylabel("System Inference Latency (ms)")
+#ax.set_title("Latency–Scalability Comparison Across SLMs")
+
+ax.grid(True, which="major", linestyle="--", linewidth=0.6, alpha=0.5)
+ax.legend(frameon=False, ncol=2)
+
+fig.tight_layout()
+plt.show()
