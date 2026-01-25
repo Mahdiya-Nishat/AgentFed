@@ -1,0 +1,62 @@
+class WorkerAgent:
+    def __init__(self, slm_name):
+        self.vib_encoder = VibrationEncoder().to(DEVICE)
+        self.em_encoder = EMTempEncoder().to(DEVICE)
+        self.projector = SemanticProjector().to(DEVICE)
+
+        self.slm = AutoModel.from_pretrained(slm_name).to(DEVICE)
+        self.slm = AutoModel.from_pretrained(slm_name).to(DEVICE)
+        self._vib_tensor = torch.zeros(1, 1, VIB_WINDOW, device=DEVICE)
+        self._emt_tensor = torch.zeros(1, 2, device=DEVICE)
+
+
+        print(f"[INFO] Loaded {slm_name} | hidden={self.slm.config.hidden_size}")
+
+
+        self.slm_adapter = SLMInputAdapter(
+            in_dim=128,
+            out_dim=self.slm.config.hidden_size
+        ).to(DEVICE)
+        nn.init.xavier_uniform_(self.slm_adapter.proj.weight)
+        nn.init.zeros_(self.slm_adapter.proj.bias)
+
+        self.intent_head = IntentHead(
+            self.slm.config.hidden_size
+        ).to(DEVICE)
+
+        self.vib_buf, self.em_buf, self.temp_buf = [], [], []
+# Telemetry
+    def step(self, sigma_v2, sigma_em, label):
+       
+        self.vib_buf.append(generate_vibration_sample(sigma_v2))
+        self.em_buf.append(generate_em_sample(sigma_em))
+        self.temp_buf.append(25 + np.random.normal(0, 0.01))
+
+        if len(self.vib_buf) < VIB_WINDOW:
+            return None
+
+       
+        self._vib_tensor[0, 0, :] = torch.tensor(self.vib_buf, device=DEVICE)
+        self._emt_tensor[0, 0] = np.mean(self.em_buf)
+        self._emt_tensor[0, 1] = np.mean(self.temp_buf)
+
+        v_feat = self.vib_encoder(self._vib_tensor)
+        e_feat = self.em_encoder(self._emt_tensor)
+
+
+
+        semantic = self.projector(v_feat, e_feat)
+
+        self.vib_buf.clear()
+        self.em_buf.clear()
+        self.temp_buf.clear()
+
+        #SLM
+        semantic_768 = self.slm_adapter(semantic)
+        tokens = semantic_768.unsqueeze(1).repeat(1, 64, 1)
+
+        slm_out = self.slm(inputs_embeds=tokens).last_hidden_state
+        logits = self.intent_head(slm_out)
+
+        loss = F.cross_entropy(logits, label)
+        return -loss.item()
