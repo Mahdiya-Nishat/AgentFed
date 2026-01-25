@@ -96,7 +96,7 @@ results["TinyBERT-4L"] = (mean, std)
 
 
 
-#Plotting in MATLAB
+#Plotting in Matplotlib
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 
