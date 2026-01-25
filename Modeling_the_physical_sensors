@@ -1,0 +1,96 @@
+pip install numpy scipy torch transformers
+
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from scipy.signal import butter, lfilter
+from transformers import AutoModel
+
+CONTROL_DT = 1e-3          
+TOTAL_TIME = 5.0          
+TOTAL_STEPS = int(TOTAL_TIME / CONTROL_DT)
+
+#Define the Global variables
+
+FS = 1000                 
+VIB_WINDOW = 64            
+FL_INTERVAL_SEC = 1.0
+K_T = int(FL_INTERVAL_SEC / CONTROL_DT)
+
+DELTA = 0.05              
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+# Define the physical telemetry noise (Vibration sensing and Electromagnetic Interference)
+
+def butter_lowpass(fc, fs, order=2):
+    return butter(order, fc / (0.5 * fs), btype='low')
+
+def generate_vibration_sample(sigma_v2):
+    raw = np.random.normal(0, np.sqrt(sigma_v2))
+    b, a = butter_lowpass(120, FS)
+    return lfilter(b, a, [raw])[0]
+
+def generate_em_sample(sigma_em):
+    if np.random.rand() < 0.2 * CONTROL_DT:
+        return np.random.normal(0, sigma_em)
+    return 0.0
+
+
+# Feature Encoding of the telemetry parameters
+
+class VibrationEncoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv1d(1, 32, 5),
+            nn.ReLU(),
+            nn.Conv1d(32, 64, 3),
+            nn.ReLU(),
+            nn.Conv1d(64, 128, 3),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool1d(1)
+        )
+
+    def forward(self, x):
+        return self.net(x).squeeze(-1)
+
+
+class EMTempEncoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(2, 64),
+            nn.ReLU(),
+            nn.Linear(64, 128)
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class SemanticProjector(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc = nn.Linear(256, 128)
+
+    def forward(self, v, e):
+        return self.fc(torch.cat([v, e], dim=-1))
+
+
+class IntentHead(nn.Module):
+    def __init__(self, hidden_dim, num_intents=3):
+        super().__init__()
+        self.fc = nn.Linear(hidden_dim, num_intents)
+
+    def forward(self, x):
+        return self.fc(x[:, 0, :])
+
+class SLMInputAdapter(nn.Module):
+    def __init__(self, in_dim, out_dim):
+        super().__init__()
+        self.proj = nn.Linear(in_dim, out_dim)
+
+    def forward(self, x):
+        return self.proj(x)
+
