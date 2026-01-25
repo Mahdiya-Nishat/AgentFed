@@ -25,6 +25,7 @@ safety compliance, and scalability under non-stationary industrial conditions.
 ├── utils/ # Signal generation and helper functions
 ├── run_simulation.py # Entry point for experiments
 └── README.md
+```
 
 License
 This repository is released for academic and research use only.
