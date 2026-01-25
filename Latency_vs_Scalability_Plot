@@ -1,0 +1,95 @@
+SLM_MODELS = {
+    "DistilBERT": "distilbert-base-uncased",
+    "MiniLM-L6": "sentence-transformers/all-MiniLM-L6-v2",
+    "ALBERT-base": "albert-base-v2",
+    "TinyBERT": "huawei-noah/TinyBERT_General_4L_312D",
+}
+
+
+def scalability_latency_experiment(
+    agent_counts,
+    slm_name,
+    sigma_v2=0.5,
+    sigma_em=0.2,
+    warmup_cycles=3,
+    measured_cycles=5
+):
+    latency_means = []
+    latency_stds = []
+
+    for N in agent_counts:
+        print(f"SLM={slm_name} | N={N}")
+
+        agents = [WorkerAgent(slm_name) for _ in range(N)]
+        label = torch.tensor([np.random.randint(0, 3)], device=DEVICE)
+
+        # warming up the slm models to avoid outlier spike in latency at the start of the simulation.
+        for _ in range(warmup_cycles):
+            for agent in agents:
+                agent.step(sigma_v2, sigma_em, label)
+
+        # measure cycles 
+        cycle_latencies = []
+
+        for _ in range(measured_cycles):
+            if DEVICE == 'cuda': # Conditionally synchronize only if CUDA is in use
+                torch.cuda.synchronize()
+            start = time.perf_counter()
+
+            for agent in agents:
+                agent.step(sigma_v2, sigma_em, label)
+
+            if DEVICE == 'cuda': # Conditionally synchronize only if CUDA is in use
+                torch.cuda.synchronize()
+            end = time.perf_counter()
+
+            cycle_latencies.append((end - start) * 1000)
+
+        latency_means.append(np.median(cycle_latencies))
+        latency_stds.append(np.percentile(cycle_latencies, 75) -
+                     np.percentile(cycle_latencies, 25))
+
+    return latency_means, latency_stds
+
+
+
+#Latency-Scalability Tradeoff Simulation:
+
+agent_counts = list(range(5, 51, 5))
+results = {}
+
+# ---- DistilBERT ----
+mean, std = scalability_latency_experiment(
+    agent_counts=agent_counts,
+    slm_name="distilbert-base-uncased",
+    warmup_cycles=10,
+    measured_cycles=20
+)
+results["DistilBERT"] = (mean, std)
+
+# ---- MiniLM-L6 ----
+mean, std = scalability_latency_experiment(
+    agent_counts=agent_counts,
+    slm_name="sentence-transformers/all-MiniLM-L6-v2",
+    warmup_cycles=10,
+    measured_cycles=20
+)
+results["MiniLM-L6"] = (mean, std)
+
+# ---- ALBERT-base ----
+mean, std = scalability_latency_experiment(
+    agent_counts=agent_counts,
+    slm_name="albert-base-v2",
+    warmup_cycles=10,
+    measured_cycles=20
+)
+results["ALBERT-base"] = (mean, std)
+
+# ---- TinyBERT-4L (FIX 3 APPLIED HERE) ----
+mean, std = scalability_latency_experiment(
+    agent_counts=agent_counts,
+    slm_name="huawei-noah/TinyBERT_General_4L_312D",
+    warmup_cycles=7,        
+    measured_cycles=30    
+)
+results["TinyBERT-4L"] = (mean, std)
