@@ -44,15 +44,6 @@ safety compliance, and scalability under non-stationary industrial conditions.
 
 
 
-## Repository Structure
-```
-
-├── agent/ # Worker-side SLM perception and intent modules
-├── fl_kd/ # Federated learning aggregation logic (FedProx) and Supervisor-triggered knowledge distillation
-├── simulation/ # Discrete-time multi-agent simulation
-├── Telemetry/ # Signal generation and helper functions
-└── README.md
-```
 
 
 
